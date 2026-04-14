@@ -1,10 +1,18 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone
+from fastapi.middleware.cors import CORSMiddleware
 import httpx
 
 
 app = FastAPI()
+# CORS Header
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/api/classify")
 async def classify(name: str = None):
@@ -12,13 +20,26 @@ async def classify(name: str = None):
     if not name or name.strip() == "":
         return JSONResponse(
             status_code=400,
-            content={ "status": "error", "message": "No prediction available for the provided name" }
+            content={ "status": "error", "message": "Missing or empty name parameter" }
         )
-    
+
+    # Check if name contains invalid characters (non-alphabetic)
+    if not name.strip().replace(" ", "").isalpha():
+        return JSONResponse(
+            status_code=422,
+            content={"status": "error", "message": "Name must be a string of alphabetic characters"}
+            )
+            
     # Call Genderize API
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"https://api.genderize.io?name={name.strip()}")
-        api_data = response.json()
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(f"https://api.genderize.io?name={name.strip()}")
+            api_data = response.json()
+    except Exception:
+        return JSONResponse(
+            status_code=502,
+            content={"status": "error", "message": "Failed to reach the Genderize API"}
+            )
     if not api_data["gender"] or api_data["count"] == 0:
         return JSONResponse(
         status_code=200,
